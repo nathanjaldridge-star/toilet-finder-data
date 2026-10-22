@@ -1,0 +1,89 @@
+# Weekly rebuild of the worldwide toilet tiles from OpenStreetMap (Geofabrik extracts -> osmium -> tiles),
+# published to the gh-pages branch of this repo (GitHub Pages). Lives in nathanjaldridge-star/toilet-finder-data.
+name: Build toilet data
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'   # Mondays 03:17 UTC (Geofabrik extracts are refreshed daily)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-data
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        run: echo "matrix=$(python3 tools/plan_regions.py --jobs 8 --max-gb 6)" >> "$GITHUB_OUTPUT"
+
+  extract:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h / /mnt
+      - name: Install osmium
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+      - name: Extract (${{ matrix.gb }} GB)
+        run: |
+          WORK=/mnt/osm; sudo mkdir -p $WORK && sudo chown "$USER" $WORK
+          bash tools/extract.sh $WORK ${{ matrix.regions }}
+          mkdir -p part && mv $WORK/out/*.geojsonseq part/
+          gzip -1 part/*.geojsonseq
+          du -sh part
+      - uses: actions/upload-artifact@v4
+        with:
+          name: part-${{ matrix.group }}
+          path: part/
+          retention-days: 3
+          compression-level: 0
+
+  publish:
+    needs: extract
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: part-*
+          path: parts
+          merge-multiple: true
+      - name: Build tiles
+        run: |
+          gunzip parts/*.gz
+          python3 tools/build_tiles.py 'parts/*.geojsonseq' --out site/v1 --deg 0.5 --tmp /tmp/tiles_tmp
+          cp site-static/* site/ && touch site/.nojekyll
+          du -sh site
+      - name: Sanity check
+        run: |
+          python3 - <<'PY'
+          import json
+          c = json.load(open('site/v1/index.json'))['counts']
+          print(c)
+          assert c['toilets'] > 400000, 'suspiciously few toilets; not publishing'
+          PY
+      - name: Publish to gh-pages (single commit, no history)
+        run: |
+          cd site
+          git init -q -b gh-pages
+          git config user.name "toilet-finder-data bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Toilet tiles $(date -u +%Y-%m-%d) from OpenStreetMap (© OpenStreetMap contributors, ODbL)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages

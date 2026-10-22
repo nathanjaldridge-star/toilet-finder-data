@@ -28,3 +28,9 @@ Run locally: `bash tools/extract.sh /var/tmp/osm europe/united-kingdom && python
 
 **Data © OpenStreetMap contributors, [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/).** See
 [site-static/LICENSE.md](site-static/LICENSE.md). Build scripts: MIT.
+
+### Enabling the weekly refresh
+
+The workflow is stored at `tools/workflow/build-data.yml` because the account token used to set this repo up can't
+write workflow files. To switch it on, copy it to `.github/workflows/build-data.yml` (GitHub web UI: Add file → Create
+new file, paste it in), then run it once from the Actions tab ("Build toilet data" → Run workflow).
