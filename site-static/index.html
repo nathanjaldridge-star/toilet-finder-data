@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Toilet Finder data</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 16px;color:#3b2414;background:#fbf6ee}code{background:#f0e4d3;padding:1px 4px;border-radius:4px}a{color:#6b3e1f}</style></head>
+<body>
+<h1>💩 Toilet Finder data</h1>
+<p>Every public toilet in <a href="https://www.openstreetmap.org/">OpenStreetMap</a> (<code>amenity=toilets</code>), plus businesses and venues tagged <code>toilets=yes</code>, cut into 0.5° tiles for the <a href="https://nathanjaldridge-star.github.io/toilet-finder-app/">Toilet Finder</a> app. Rebuilt weekly from Geofabrik extracts.</p>
+<p id="meta">Loading counts…</p>
+<ul>
+<li><code>v1/index.json</code>: build time, counts, attribution</li>
+<li><code>v1/tiles/&lt;floor(lat/0.5)&gt;_&lt;floor(lon/0.5)&gt;.json</code>: one tile (404 = no toilets there). Example: <a href="v1/tiles/103_-1.json">Hackney</a></li>
+<li><code>v1/tiles.json</code>: list of tiles with counts and sizes</li>
+</ul>
+<p><strong>Data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, available under the <a href="https://opendatacommons.org/licenses/odbl/1-0/">Open Database License (ODbL) 1.0</a>.</strong> This is a derived database; if you reuse it you must keep the attribution and share any changes to the data under the ODbL. See <a href="LICENSE.md">LICENSE.md</a>.</p>
+<script>fetch('v1/index.json').then(r=>r.json()).then(j=>{var c=j.counts;document.getElementById('meta').textContent=c.toilets.toLocaleString()+' toilets ('+c.customersOnly.toLocaleString()+' customers-only, '+c.withHours.toLocaleString()+' with opening hours) in '+c.tiles.toLocaleString()+' tiles. Built '+j.generated+'.'}).catch(()=>{});</script>
+</body></html>
