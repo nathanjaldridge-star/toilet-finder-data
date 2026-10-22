@@ -101,17 +101,22 @@ class Grid:
                 yield from self.cells.get((i, j), ())
 
 
+def _ident(f):
+    fid = f.get('id') or ''
+    typ = {'n': 'node', 'w': 'way', 'r': 'relation', 'a': 'way'}.get(fid[:1])
+    return (typ, int(fid[1:])) if typ and fid[1:].isdigit() else (None, None)
+
+
 def process_region(path, deg, sink, stats):
-    toilets, venues, parents = {}, {}, {}
+    # Pass 1: toilets and venues (and the operators of hourless toilets, for name-matched parents).
+    toilets, venues, operators = {}, {}, set()
     for f in read_features(path):
-        fid = f.get('id') or ''
         tags = f.get('properties') or {}
-        if not fid or not tags or not f.get('geometry'):
+        if not tags or not f.get('geometry') or not (tags.get('amenity') == 'toilets' or tags.get('toilets') == 'yes'):
             continue
-        typ = {'n': 'node', 'w': 'way', 'r': 'relation', 'a': 'way'}.get(fid[0])
+        typ, oid = _ident(f)
         if not typ:
             continue
-        oid = int(fid[1:])
         s, w, n, e = geom_bounds(f['geometry'])
         lat, lon = (s + n) / 2, (w + e) / 2
         key = typ[0] + str(oid)
@@ -120,15 +125,26 @@ def process_region(path, deg, sink, stats):
                 stats['private_skipped'] += 1
                 continue
             toilets[key] = (typ, oid, lat, lon, {k: tags[k] for k in KEEP_TOILET if k in tags})
-        elif tags.get('toilets') == 'yes':
-            if tags.get('toilets:access') in PRIVATE:
+            if not tags.get('opening_hours') and tags.get('operator'):
+                operators.add(tags['operator'].lower())
+        else:
+            if tags.get('toilets:access') in PRIVATE or tags.get('access') in PRIVATE:
                 stats['private_skipped'] += 1
                 continue
             venues[key] = (typ, oid, lat, lon, {k: tags[k] for k in KEEP_TOILET if k in tags})
-        if tags.get('opening_hours') and tags.get('amenity') != 'toilets':
-            area = n > s or e > w
-            if category(tags, PARENT_AREA if area else NODE_PARENT) or tags.get('name'):
-                parents[key] = (typ, oid, lat, lon, (s, w, n, e) if area else None, {k: tags[k] for k in KEEP_PARENT if k in tags})
+    # Pass 2: candidate parents (features with opening_hours of a parent kind, or named like a toilet's operator).
+    parents = {}
+    for f in read_features(path):
+        tags = f.get('properties') or {}
+        if not tags.get('opening_hours') or tags.get('amenity') == 'toilets' or not f.get('geometry'):
+            continue
+        typ, oid = _ident(f)
+        if not typ:
+            continue
+        s, w, n, e = geom_bounds(f['geometry'])
+        area = n > s or e > w
+        if category(tags, PARENT_AREA if area else NODE_PARENT) or (tags.get('name') or '').lower() in operators:
+            parents[typ[0] + str(oid)] = (typ, oid, (s + n) / 2, (w + e) / 2, (s, w, n, e) if area else None, {k: tags[k] for k in KEEP_PARENT if k in tags})
 
     grid = Grid()
     for t in toilets.values():
